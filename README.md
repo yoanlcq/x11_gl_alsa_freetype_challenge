@@ -26,6 +26,10 @@ More or less follow Rust's style with regards to case for type vs. variable
 names, etc.
 
 # Day 1
+
+The game's codename is "dsky", short for "dracosky", a far earlier attempt at
+a game jam with SDL2.
+
 The game successfully:
 - Creates and configures an X11 window and cursor;
 - Receives and handles events;
