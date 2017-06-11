@@ -54,6 +54,9 @@ Extra features I'd like to add:
 - Camera shaking effect;
 - Some text rendering;
 
+The game avoids matrices like the plague because I'm too lazy to implement them,
+but obviously I'd care if it was something I would ship.
+
 # Dependencies
 You should be fine _running_ the executable (if I distribute one)
 out-of-the-box on amd64, however for compiling you'll need (provided I haven't left out anything):

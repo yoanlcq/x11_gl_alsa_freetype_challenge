@@ -12,6 +12,10 @@
 #include <limits.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/extensions/xf86vmode.h>
+
+#define BG_W 1020
+#define BG_H 407
 
 #define TAG "Game"
 
@@ -21,6 +25,10 @@ static const char *vsrc =
     "\n"
     "uniform vec2 u_position;\n"
     "uniform vec2 u_scale;\n"
+    "uniform float u_aspect_ratio;\n"
+    "uniform vec2 u_view_position;\n"
+    "uniform float u_view_zoom;\n"
+    "uniform float u_view_aspect_ratio;\n"
     "\n"
     "in vec2 a_position;\n"
     "in vec2 a_texcoords;\n"
@@ -29,7 +37,11 @@ static const char *vsrc =
     "\n"
     "void main() {\n"
     "    v_texcoords = a_texcoords;\n"
-    "    gl_Position = vec4(a_position*u_scale + u_position, 0, 1);\n"
+    "    vec2 pos = a_position;\n"
+    "    pos.x *= u_aspect_ratio / u_view_aspect_ratio;\n"
+    "    pos *= u_scale * u_view_zoom;\n"
+    "    pos += u_position - u_view_position;\n"
+    "    gl_Position = vec4(pos, 0, 1);\n"
     "}\n"
 ;
 
@@ -54,34 +66,86 @@ void Game_reshape(Game *g) {
 
 void Game_frame_update(Game *g) {
 
-    Vec2f factor = { .x=-0.02f, .y=-0.02f };
+    if(g->view.is_zooming)
+        g->view.zoom *= 1 + 0.01f;
+    if(g->view.is_dezooming)
+        g->view.zoom *= 1 - 0.01f;
+
+    Vec2f factor = { .x=0.02f, .y=0.02f };
     Vec2f world = {
         .x = ((g->current_mouse_position.x / (float) g->current_window_size.w) - 0.5f) * 2,
         .y = (0.5f - (g->current_mouse_position.y / (float) g->current_window_size.h)) * 2
     };
     // printf("mosx: %i\n", g->current_mouse_position.x);
     // printf("sizw: %u\n", g->current_window_size.w);
-    g->current_bg_velocity.x = world.x*factor.x;
-    g->current_bg_velocity.y = world.y*factor.y;
+    g->view.velocity.x = world.x*factor.x;
+    g->view.velocity.y = world.y*factor.y;
     const Vec2f max_vel = { .x=0.01f, .y=0.01f };
-    if(fabsf(g->current_bg_velocity.x) <= max_vel.x)
-        g->current_bg_velocity.x = 0;
-    if(fabsf(g->current_bg_velocity.y) <= max_vel.y)
-        g->current_bg_velocity.y = 0;
-    //printf("velx: %f\n", g->current_bg_velocity.x);
+    if(fabsf(g->view.velocity.x) <= max_vel.x)
+        g->view.velocity.x = 0;
+    if(fabsf(g->view.velocity.y) <= max_vel.y)
+        g->view.velocity.y = 0;
+    //printf("velx: %f\n", g->view.velocity.x);
 
-    g->current_bg_position.x += g->current_bg_velocity.x;
-    g->current_bg_position.y += g->current_bg_velocity.y;
-    g->current_bg_position.x = clampf(g->current_bg_position.x, -1.25f, 1.25f);
-    g->current_bg_position.y = clampf(g->current_bg_position.y, -1.0f, 1.0f);
-    //printf("posx: %f\n", g->current_bg_position.x);
+    g->view.position.x += g->view.velocity.x;
+    g->view.position.y += g->view.velocity.y;
+    const float view_aspect_ratio = 
+        g->current_window_size.w / (float) g->current_window_size.h;
+    const float aspect_ratio = BG_W / (float) BG_H;
+    float x_bound = -1 + aspect_ratio/view_aspect_ratio;
+    x_bound *= g->view.zoom;
+    float y_bound = g->view.zoom - 1;
+    g->view.position.x = clampf(g->view.position.x, -x_bound, x_bound);
+    g->view.position.y = clampf(g->view.position.y, -y_bound, y_bound);
+    //printf("posx: %f\n", g->view.position.x);
 }
 void Game_render_clear(Game *g) {
     (void)g;
     glClearColor(1,0,0,1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
+
+#include <math.h>
+static float shake(float t, float freq, float amp) {
+    return amp * sinf(t * freq * 2 * M_PI);
+}
+
+
+// https://gist.github.com/diabloneo/9619917
+// Didn't feel like implementing this myself, it should be a standard
+// function anyway.
+static void timespec_diff(struct timespec *start, struct timespec *stop,
+        struct timespec *result)
+{
+    if (stop->tv_nsec < start->tv_nsec) {
+        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+    } else {
+        result->tv_sec = stop->tv_sec - start->tv_sec;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
+    }
+}
+
+static void timespec_print(const char *header, struct timespec t) {
+    logi("%s %lli sec, %llu nanosecs\n", header, (long long)t.tv_sec, (unsigned long long)t.tv_nsec);
+}
+
 void Game_render_scene(Game *g) {
+
+    struct timespec current_time, diff_time;
+    clock_gettime(CLOCK_MONOTONIC, &current_time);
+
+    timespec_diff(&g->start_time, &current_time, &diff_time);
+    float t = diff_time.tv_sec + diff_time.tv_nsec * 10e-10f;
+    float shake_x = shake(t, 2.f, 0.02f);
+    // printf("t = %f\n", t);
+    // timespec_print("s", g->start_time);
+    // timespec_print("c", current_time);
+    // timespec_print("d", diff_time);
+    Vec2f viewpos = g->view.position;
+    // NOTE: toggle shake effect hack
+    // viewpos.x += shake_x;
+
     glUseProgram(g->gl_program);
     glBindBuffer(GL_ARRAY_BUFFER, g->gl_vbo);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);
@@ -93,8 +157,13 @@ void Game_render_scene(Game *g) {
     glActiveTexture(GL_TEXTURE0 + texunit);
     glBindTexture(GL_TEXTURE_2D, g->gl_bg_texture);
     glUniform1i(g->gl_loc_texture, texunit);
-    glUniform2f(g->gl_loc_scale, 2.5f, 2.f);
+    glUniform2f(g->gl_loc_scale, 1.f, 1.f);
     glUniform2fv(g->gl_loc_position, 1, (const GLfloat*)&g->current_bg_position);
+    glUniform1f(g->gl_loc_aspect_ratio, BG_W/(float)BG_H);
+    glUniform2fv(g->gl_loc_view_position, 1, (const GLfloat*)&viewpos);
+    glUniform1f(g->gl_loc_view_zoom, g->view.zoom);
+    float ratio = g->current_window_size.w / (float) g->current_window_size.h;
+    glUniform1f(g->gl_loc_view_aspect_ratio, ratio);
 
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
@@ -104,6 +173,7 @@ void Game_render_scene(Game *g) {
     glUseProgram(0);
 }
 void Game_render_present(Game *g) {
+    // PERF: should avoid this branch when we know ?
     if(!g->is_vsync) {
         struct timespec t = {0}, rem;
         t.tv_nsec = 16666666;
@@ -119,11 +189,11 @@ static bool has_GLX_ARB_create_context_profile = false;
 static bool has_GLX_EXT_swap_control = false;
 static bool has_GLX_EXT_swap_control_tear = false;
 static const char *glx_extensions;
-static Atom WM_DELETE_WINDOW = None;
 
 Game Game_init(GameInitialParams p) {
 
     Game g = {0};
+    g.view.zoom = 1.4f;
     g.should_quit = false;
     g.x_display = XOpenDisplay(NULL);
     hope(g.x_display);
@@ -210,13 +280,17 @@ Game Game_init(GameInitialParams p) {
                      ColormapChangeMask | OwnerGrabButtonMask;
 
     // https://specifications.freedesktop.org/wm-spec/latest/
-    // Atom _NET_WM_PID   = XInternAtom(g.x_display, "_NET_WM_PID", False);
-    // Atom _NET_WM_PING  = XInternAtom(g.x_display, "_NET_WM_PING", False);
-    // Atom _NET_WORKAREA = XInternAtom(g.x_display, "_NET_WORKAREA", False);
-    // Atom _NET_DESKTOP_VIEWPORT = XInternAtom(g.x_display, "_NET_DESKTOP_VIEWPORT", False);
-    // Atom _NET_DESKTOP_GEOMETRY = XInternAtom(g.x_display, "_NET_DESKTOP_GEOMETRY", False);
-    // Atom _NET_WM_ICON  = XInternAtom(g.x_display, "_NET_WM_ICON", False);
-    // Atom _NET_FRAME_EXTENTS  = XInternAtom(g.x_display, "_NET_FRAME_EXTENTS", False);
+    g.WM_DELETE_WINDOW = XInternAtom(g.x_display, "WM_DELETE_WINDOW", False);
+
+    g._NET_WM_PID   = XInternAtom(g.x_display, "_NET_WM_PID", False);
+    g._NET_WM_PING  = XInternAtom(g.x_display, "_NET_WM_PING", False);
+    g._NET_WORKAREA = XInternAtom(g.x_display, "_NET_WORKAREA", False);
+    g._NET_DESKTOP_VIEWPORT = XInternAtom(g.x_display, "_NET_DESKTOP_VIEWPORT", False);
+    g._NET_DESKTOP_GEOMETRY = XInternAtom(g.x_display, "_NET_DESKTOP_GEOMETRY", False);
+    g._NET_WM_ICON  = XInternAtom(g.x_display, "_NET_WM_ICON", False);
+    g._NET_FRAME_EXTENTS  = XInternAtom(g.x_display, "_NET_FRAME_EXTENTS", False);
+    g._NET_WM_STATE = XInternAtom(g.x_display, "_NET_WM_STATE", False);
+    g._NET_WM_STATE_FULLSCREEN = XInternAtom(g.x_display, "_NET_WM_STATE_FULLSCREEN", False);
 
     if(p.center_window) {
         
@@ -232,7 +306,7 @@ Game Game_init(GameInitialParams p) {
         } *workarea;
         hope(XGetWindowProperty(
             g.x_display, RootWindow(g.x_display, g.x_screen),
-            _NET_WORKAREA, 0, 4, False,
+            g._NET_WORKAREA, 0, 4, False,
             req_type, &actual_type_return, &actual_format_return, 
             &nitems_return, &bytes_after_return, 
             (unsigned char**)&workarea
@@ -244,14 +318,14 @@ Game Game_init(GameInitialParams p) {
         Extent2u *dsiz;
         hope(XGetWindowProperty(
             g.x_display, RootWindow(g.x_display, g.x_screen),
-            _NET_DESKTOP_VIEWPORT, 0, 2, False,
+            g._NET_DESKTOP_VIEWPORT, 0, 2, False,
             req_type, &actual_type_return, &actual_format_return, 
             &nitems_return, &bytes_after_return, 
             (unsigned char**)&dpos
         ) == Success);
         hope(XGetWindowProperty(
             g.x_display, RootWindow(g.x_display, g.x_screen),
-            _NET_DESKTOP_GEOMETRY, 0, 2, False,
+            g._NET_DESKTOP_GEOMETRY, 0, 2, False,
             req_type, &actual_type_return, &actual_format_return, 
             &nitems_return, &bytes_after_return, 
             (unsigned char**)&dsiz
@@ -289,6 +363,8 @@ Game Game_init(GameInitialParams p) {
 
     XFree(visual_info);
 
+    XSetWMProtocols(g.x_display, g.x_window, &g.WM_DELETE_WINDOW, 1);
+
     XSizeHints hints = {0};
     hints.flags  = PPosition | PSize;
     hints.x      = p.window_position.x;
@@ -299,24 +375,21 @@ Game Game_init(GameInitialParams p) {
 
     XStoreName(g.x_display, g.x_window, p.window_title);
     
-    WM_DELETE_WINDOW = XInternAtom(g.x_display, "WM_DELETE_WINDOW", False);
-    XSetWMProtocols(g.x_display, g.x_window, &WM_DELETE_WINDOW, 1);
-
     XColor cursor_bg = {0}, cursor_fg = {0}, dummy;
     // NOTE: view /etc/X11/rgb.txt
     XLookupColor(g.x_display, cmap, "gold", &dummy, &cursor_bg);
     XLookupColor(g.x_display, cmap, "brown", &dummy, &cursor_fg);
     Vec2i cursor_hotspot = {0};
     Pixmap cursor_pixmap, cursor_mask;
-#include <X11/bitmaps/left_ptr>
+#include <X11/bitmaps/star>
     cursor_pixmap = XCreateBitmapFromData(
         g.x_display, RootWindow(g.x_display, g.x_screen), 
-        (void*)left_ptr_bits, left_ptr_width, left_ptr_height
+        (void*)star_bits, star_width, star_height
     );
-#include <X11/bitmaps/left_ptrmsk>
+#include <X11/bitmaps/starMask>
     cursor_mask = XCreateBitmapFromData(
         g.x_display, RootWindow(g.x_display, g.x_screen), 
-        (void*)left_ptrmsk_bits, left_ptrmsk_width, left_ptrmsk_height
+        (void*)starMask_bits, starMask_width, starMask_height
     );
     Cursor cursor = XCreatePixmapCursor(g.x_display, cursor_pixmap, cursor_mask, &cursor_fg, &cursor_bg, cursor_hotspot.x, cursor_hotspot.y);
     XDefineCursor(g.x_display, g.x_window, cursor);
@@ -349,6 +422,11 @@ Game Game_init(GameInitialParams p) {
     else
         g.is_vsync = false;
 
+    printf("Is Vsync (maybe): %s\n", g.is_vsync ? "Yes" : "No");
+    // NOTE: We should read back the swap interval
+    // to ensure the display has Vsync. On my laptop, for some
+    // reason, it doesn't.
+
     XMapRaised(g.x_display, g.x_window);
     XSync(g.x_display, False);
 
@@ -371,14 +449,21 @@ Game Game_init(GameInitialParams p) {
 
     g.gl_loc_texture = glGetUniformLocation(g.gl_program, "u_texture");
     g.gl_loc_position = glGetUniformLocation(g.gl_program, "u_position");
+    g.gl_loc_aspect_ratio = glGetUniformLocation(g.gl_program, "u_aspect_ratio");
     g.gl_loc_scale = glGetUniformLocation(g.gl_program, "u_scale");
+    g.gl_loc_view_position = glGetUniformLocation(g.gl_program, "u_view_position");
+    g.gl_loc_view_zoom = glGetUniformLocation(g.gl_program, "u_view_zoom");
+    g.gl_loc_view_aspect_ratio = glGetUniformLocation(g.gl_program, "u_view_aspect_ratio");
     hope(g.gl_loc_texture != -1);
     hope(g.gl_loc_position != -1);
     hope(g.gl_loc_scale != -1);
+    hope(g.gl_loc_aspect_ratio != -1);
+    hope(g.gl_loc_view_position != -1);
+    hope(g.gl_loc_view_zoom != -1);
+    hope(g.gl_loc_view_aspect_ratio != -1);
 
     glBindAttribLocation(g.gl_program, 0, "a_position");
     glBindAttribLocation(g.gl_program, 1, "a_texcoords");
-
 
     const Vec2f vpositions[] = {
         { .x=-1, .y=-1 },
@@ -388,8 +473,8 @@ Game Game_init(GameInitialParams p) {
     };
 
     const Extent2(float) texcoord_bounds = {
-        .w=1020.f/1024.f,
-        .h=407.f/1024.f,
+        .w=BG_W/1024.f,
+        .h=BG_H/1024.f
     };
     const TexUv vtexcoords[] = {
         { .u=0                , .v=texcoord_bounds.h },
@@ -412,6 +497,8 @@ Game Game_init(GameInitialParams p) {
     hope(PcmWav_is_valid(g.bg_wav));
     PcmWav_log(g.bg_wav, "Loaded `bg.wav`:");
     PcmWav_play_once(g.bg_wav);
+
+    clock_gettime(CLOCK_MONOTONIC, &g.start_time);
 
     return g;
 }
@@ -441,17 +528,105 @@ GameEvent Game_wait_event(Game *g) {
     return event;
 }
 
+#ifndef _NET_WM_STATE_REMOVE
+#define _NET_WM_STATE_REMOVE 0
+#endif
+#ifndef _NET_WM_STATE_ADD
+#define _NET_WM_STATE_ADD    1
+#endif
+#ifndef _NET_WM_STATE_TOGGLE
+#define _NET_WM_STATE_TOGGLE 2 
+#endif
+
+// NOTE: action is one of the above three
+static void Game_x11_set_fullscreen(Game *g, int action) {
+    // NOTE: Later, consider bypassing the compositor
+    // Also consider setting motif wm hints as an alternative implementation
+    
+    long event_mask = SubstructureNotifyMask | SubstructureRedirectMask;
+
+    XClientMessageEvent event_send = {0};
+    event_send.type = ClientMessage;
+    //event_send.serial = 0;
+    //event_send.send_event = True;
+    //event_send.display = g.x_display;
+    event_send.window = g->x_window;
+    event_send.message_type = g->_NET_WM_STATE;
+    event_send.format = 32;
+    event_send.data.l[0] = action;
+    event_send.data.l[1] = g->_NET_WM_STATE_FULLSCREEN;
+    event_send.data.l[2] = 0; // No second property
+    event_send.data.l[3] = 1; // Normal window
+
+    XSendEvent(
+        g->x_display, RootWindow(g->x_display, g->x_screen), False,
+        event_mask, (XEvent*)&event_send
+    );
+    XSync(g->x_display, False);
+}
+void Game_toggle_fullscreen(Game *g) {
+    Game_x11_set_fullscreen(g, _NET_WM_STATE_TOGGLE);
+}
+void Game_enter_fullscreen(Game *g) {
+    Game_x11_set_fullscreen(g, _NET_WM_STATE_ADD);
+}
+void Game_leave_fullscreen(Game *g) {
+    Game_x11_set_fullscreen(g, _NET_WM_STATE_REMOVE);
+}
+
 static void Game_handle_KeyPress(Game *g, XKeyEvent *e) {
     (void)g;
     KeySym keysym = XLookupKeysym(e, 0);
     hope(keysym != NoSymbol);
-    //logi("Pressed: keycode=%i, keysym=%lu\n", e->keycode, keysym);
+    // logi("Pressed: keycode=%i, keysym=%lu\n", e->keycode, keysym);
+    // NOTE: /usr/include/X11/keysymdef.h
+    //
+    // NOTE: Yes, this does support simltaneaous key presses :
+    // See how xev reacts to it.
+    bool is_repeat = false;
+    if(g->x11_previous_key_release_event.time == e->time
+    && g->x11_previous_key_release_event.keycode == e->keycode
+    ) {
+        //logi("%i is repeat\n", e->keycode);
+        is_repeat = true;
+    }
+    switch(keysym) {
+    case XK_KP_Subtract: 
+    case XK_minus: 
+    case XK_f:
+        g->view.is_dezooming = true;
+        break;
+    case XK_KP_Add:
+    case XK_plus:
+    case XK_g:
+        g->view.is_zooming = true;
+        break;
+    case XK_F11: 
+        if(is_repeat)
+            break;
+        Game_toggle_fullscreen(g);
+        break;
+    }
 }
 static void Game_handle_KeyRelease(Game *g, XKeyEvent *e) {
     (void)g;
+    g->x11_previous_key_release_event = *e;
     KeySym keysym = XLookupKeysym(e, 0);
     hope(keysym != NoSymbol);
-    //logi("Released: keycode=%i, keysym=%lu\n", e->keycode, keysym);
+    // logi("Released: keycode=%i, keysym=%lu\n", e->keycode, keysym);
+    switch(keysym) {
+    case XK_KP_Subtract: 
+    case XK_minus: 
+    case XK_f:
+        g->view.is_dezooming = false;
+        break;
+    case XK_KP_Add:
+    case XK_plus:
+    case XK_g:
+        g->view.is_zooming = false;
+        break;
+    }
+
 }
 static void Game_handle_ButtonPress(Game *g, XButtonEvent *e) {
     (void)g;
@@ -552,7 +727,7 @@ void Game_handle_event(Game *g, GameEvent event) {
         Game_handle_FocusOut(g, (void*)&event);
         break;
     case ClientMessage:
-        if((Atom) event.xclient.data.l[0] == WM_DELETE_WINDOW) {
+        if((Atom) event.xclient.data.l[0] == g->WM_DELETE_WINDOW) {
             logi("Received quit event\n");
             g->should_quit = true;
         }
@@ -565,3 +740,4 @@ void Game_handle_event(Game *g, GameEvent event) {
         return;
     }
 }
+

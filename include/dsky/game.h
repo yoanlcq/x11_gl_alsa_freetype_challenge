@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <time.h>
 #include <dsky/vec.h>
 #include <dsky/gl.h>
 #include <dsky/wav.h>
@@ -19,17 +20,29 @@ typedef struct {
 } GameInitialParams;
 
 typedef struct {
+    Vec2f position, velocity;
+    bool is_zooming, is_dezooming;
+    float zoom;
+} View;
+
+typedef struct {
     PlatformGame;
     bool should_quit;
-    Vec2f current_bg_position, current_bg_velocity;
+    struct timespec start_time;
     Vec2i current_mouse_position;
     Vec2i current_window_position;
+    Vec2f current_bg_position;
     Extent2u current_window_size;
+    View view;
     GLuint gl_bg_texture;
     GLuint gl_program;
     GLint gl_loc_texture;
     GLint gl_loc_position;
     GLint gl_loc_scale;
+    GLint gl_loc_aspect_ratio;
+    GLint gl_loc_view_position;
+    GLint gl_loc_view_zoom;
+    GLint gl_loc_view_aspect_ratio;
     GLuint gl_vbo;
     PcmWav *bg_wav;
 } Game;

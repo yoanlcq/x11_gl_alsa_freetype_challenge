@@ -10,12 +10,12 @@ cc := gcc
 include:=include
 cflags := \
 	-Wall -Wextra -Wpedantic \
-	-std=c11 -fms-extensions \
+	-std=gnu11 -fms-extensions \
 	-D_POSIX_C_SOURCE=199309L -D_GNU_SOURCE \
-	-I$(include) \
+	-I$(include) -I/usr/include/freetype2 \
 	-g \
 	-m64
-ldlibs := -lX11 -lGL -lasound -lpthread -lm
+ldlibs := -lX11 -lGL -lasound -lpthread -lm -lrt -lfreetype
 
 cfiles := $(wildcard \
 	$(src)/*.c \
