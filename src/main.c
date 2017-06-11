@@ -1,14 +1,10 @@
 #include <dsky/game.h>
 
-// TODO
-// - Actually center window;
-// - Actually have Vsync;
-// - Prevent resizing;
-
 int main() {
     GameInitialParams p = {
-        .window_title = "Dracosky",
-        .window_position = { .x = (1366-854)/2, .y = (768-20-480)/2 },
+        .window_title = "Dsky",
+        .center_window = true,
+        // .window_position = { .x = (1366-854)/2, .y = (768-20-480)/2 },
         .window_size = { .w=854, .h=480 }
     };
     Game g = Game_init(p);

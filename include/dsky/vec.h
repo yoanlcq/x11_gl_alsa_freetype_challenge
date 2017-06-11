@@ -13,3 +13,9 @@ typedef Extent2(float) Extent2f;
 typedef Rgba(uint8_t) Rgba32;
 typedef Uv(float) TexUv;
 _Static_assert(sizeof(Rgba32) == 4, "Rgba32 is not 4 bytes!");
+
+#include <math.h>
+static inline float clampf(float x, float a, float b) {
+    return fminf(fmaxf(x,a),b);
+}
+

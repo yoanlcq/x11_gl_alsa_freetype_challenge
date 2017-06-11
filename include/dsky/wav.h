@@ -23,3 +23,4 @@ typedef struct {
 bool PcmWav_is_valid(const PcmWav *data);
 void PcmWav_log(const PcmWav *wav, const char *header);
 void PcmWav_play_once(const PcmWav *wav);
+void PcmWav_convert_endianness(const PcmWav *wav);

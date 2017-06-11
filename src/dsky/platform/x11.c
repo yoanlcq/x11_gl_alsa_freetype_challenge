@@ -48,23 +48,22 @@ static const char *fsrc =
     "}\n"
 ;
 
-// XXX need parentheses
-#include <math.h>
-static float clampf(float x, float a, float b) { return fminf(fmaxf(x,a),b); }
+void Game_reshape(Game *g) {
+    glViewport(0, 0, g->current_window_size.w, g->current_window_size.h);
+}
 
 void Game_frame_update(Game *g) {
 
     Vec2f factor = { .x=-0.02f, .y=-0.02f };
-    Extent2f window_size = { .w=854, .h=480 };
-    // XXX assumes window extent
     Vec2f world = {
-        .x = ((g->current_mouse_position.x / window_size.w) - 0.5f) * 2,
-        .y = (0.5f - (g->current_mouse_position.y / window_size.h)) * 2
+        .x = ((g->current_mouse_position.x / (float) g->current_window_size.w) - 0.5f) * 2,
+        .y = (0.5f - (g->current_mouse_position.y / (float) g->current_window_size.h)) * 2
     };
-    //printf("mosx: %i\n", g->current_mouse_position.x);
+    // printf("mosx: %i\n", g->current_mouse_position.x);
+    // printf("sizw: %u\n", g->current_window_size.w);
     g->current_bg_velocity.x = world.x*factor.x;
     g->current_bg_velocity.y = world.y*factor.y;
-    const Vec2f max_vel = { .x=0.008f, .y=0.008f };
+    const Vec2f max_vel = { .x=0.01f, .y=0.01f };
     if(fabsf(g->current_bg_velocity.x) <= max_vel.x)
         g->current_bg_velocity.x = 0;
     if(fabsf(g->current_bg_velocity.y) <= max_vel.y)
@@ -115,12 +114,13 @@ void Game_render_present(Game *g) {
 
 static PFNGLXCREATECONTEXTATTRIBSARBPROC glXCreateContextAttribsARB;
 static PFNGLXSWAPINTERVALEXTPROC glXSwapIntervalEXT;
-static bool has_GLX_EXT_swap_control_tear = false;
+static bool has_GLX_ARB_create_context = false;
+static bool has_GLX_ARB_create_context_profile = false;
 static bool has_GLX_EXT_swap_control = false;
+static bool has_GLX_EXT_swap_control_tear = false;
 static const char *glx_extensions;
 static Atom WM_DELETE_WINDOW = None;
 
-// XXX This just assumes the GLX presence and version
 Game Game_init(GameInitialParams p) {
 
     Game g = {0};
@@ -129,9 +129,26 @@ Game Game_init(GameInitialParams p) {
     hope(g.x_display);
     g.x_screen = DefaultScreen(g.x_display);
 
+    int glx_error_base = 0, glx_event_base = 0;
+    hope(glXQueryExtension(g.x_display, &glx_error_base, &glx_event_base));
+
+    int glx_major = 0, glx_minor = 0;
+    hope(glXQueryVersion(g.x_display, &glx_major, &glx_minor));
+    hope(glx_major >= 1);
+    hope(glx_major == 1 ? glx_minor >= 4 : true);
+
+    // NOTE: I don't set an X11 custom error handler when creating the
+    // OpenGL context, and I'm fine with that right now.
+
+    // PERF: strstr() every time
     glx_extensions = glXQueryExtensionsString(g.x_display, g.x_screen);
+    has_GLX_ARB_create_context = !!strstr(glx_extensions, "GLX_ARB_create_context");
+    has_GLX_ARB_create_context_profile = !!strstr(glx_extensions, "GLX_ARB_create_context_profile");
     has_GLX_EXT_swap_control = !!strstr(glx_extensions, "GLX_EXT_swap_control");
     has_GLX_EXT_swap_control_tear = !!strstr(glx_extensions, "GLX_EXT_swap_control_tear");
+
+    hope(has_GLX_ARB_create_context);
+    hope(has_GLX_ARB_create_context_profile); // NOTE: because of laziness
 
     glXCreateContextAttribsARB = 
         (PFNGLXCREATECONTEXTATTRIBSARBPROC) 
@@ -192,6 +209,74 @@ Game Game_init(GameInitialParams p) {
                      FocusChangeMask | PropertyChangeMask |
                      ColormapChangeMask | OwnerGrabButtonMask;
 
+    // https://specifications.freedesktop.org/wm-spec/latest/
+    // Atom _NET_WM_PID   = XInternAtom(g.x_display, "_NET_WM_PID", False);
+    // Atom _NET_WM_PING  = XInternAtom(g.x_display, "_NET_WM_PING", False);
+    // Atom _NET_WORKAREA = XInternAtom(g.x_display, "_NET_WORKAREA", False);
+    // Atom _NET_DESKTOP_VIEWPORT = XInternAtom(g.x_display, "_NET_DESKTOP_VIEWPORT", False);
+    // Atom _NET_DESKTOP_GEOMETRY = XInternAtom(g.x_display, "_NET_DESKTOP_GEOMETRY", False);
+    // Atom _NET_WM_ICON  = XInternAtom(g.x_display, "_NET_WM_ICON", False);
+    // Atom _NET_FRAME_EXTENTS  = XInternAtom(g.x_display, "_NET_FRAME_EXTENTS", False);
+
+    if(p.center_window) {
+        
+        /*
+        Atom req_type = 0, actual_type_return = 0;
+        int actual_format_return;
+        unsigned long nitems_return, bytes_after_return;
+        */
+
+        /*
+        struct {
+            int32_t x, y, w, h;
+        } *workarea;
+        hope(XGetWindowProperty(
+            g.x_display, RootWindow(g.x_display, g.x_screen),
+            _NET_WORKAREA, 0, 4, False,
+            req_type, &actual_type_return, &actual_format_return, 
+            &nitems_return, &bytes_after_return, 
+            (unsigned char**)&workarea
+        ) == Success);
+        logi("(%i,%i,%i,%i)\n", workarea->x, workarea->y, workarea->w, workarea->h);
+        */
+        /*
+        Vec2i *dpos;
+        Extent2u *dsiz;
+        hope(XGetWindowProperty(
+            g.x_display, RootWindow(g.x_display, g.x_screen),
+            _NET_DESKTOP_VIEWPORT, 0, 2, False,
+            req_type, &actual_type_return, &actual_format_return, 
+            &nitems_return, &bytes_after_return, 
+            (unsigned char**)&dpos
+        ) == Success);
+        hope(XGetWindowProperty(
+            g.x_display, RootWindow(g.x_display, g.x_screen),
+            _NET_DESKTOP_GEOMETRY, 0, 2, False,
+            req_type, &actual_type_return, &actual_format_return, 
+            &nitems_return, &bytes_after_return, 
+            (unsigned char**)&dsiz
+        ) == Success);
+        logi("(%i,%i,%i,%i)\n", dpos->x, dpos->y, dsiz->w, dsiz->h);
+        */
+
+        // NOTE: The taskbar is not part of the computation
+        Extent2u d = {
+            .w = DisplayWidth(g.x_display, g.x_screen),
+            .h = DisplayHeight(g.x_display, g.x_screen)
+            // .w = workarea->w,
+            // .h = workarea->h
+            // .w = dsiz->w,
+            // .h = dsiz->h
+        };
+        p.window_position = (Vec2i) {
+            .x = d.w/2 - p.window_size.w/2,
+            .y = d.h/2 - p.window_size.h/2,
+        };
+
+        // XFree(dpos);
+        // XFree(dsiz);
+        // XFree(workarea);
+    }
 
     g.x_window = XCreateWindow(
         g.x_display, RootWindow(g.x_display, visual_info->screen),
@@ -273,9 +358,10 @@ Game Game_init(GameInitialParams p) {
     logi("Version: %s\n", glGetString(GL_VERSION));
     logi("GLSL version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
-    Rgba32 *data = Res_load("bg.data");
-    hope(data);
-    Extent2u extent = { .w=1024, .h=1024 }; // XXX assumed
+    Iov rgba_iov = Res_load("bg_1024x1024_rgba.data");
+    hope(rgba_iov.size);
+    Rgba32 *data = rgba_iov.data;
+    Extent2u extent = { .w=1024, .h=1024 };
     g.gl_bg_texture = GLTexture_from_power_of_two_rgba32(data, extent);
     free(data);
     hope(g.gl_bg_texture);
@@ -319,8 +405,10 @@ Game Game_init(GameInitialParams p) {
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof vpositions, vpositions);
     glBufferSubData(GL_ARRAY_BUFFER, sizeof vpositions, sizeof vtexcoords, vtexcoords);
 
-    g.bg_wav = Res_load("bg.wav"); // XXX works here only because little-endian
-    hope(g.bg_wav);
+    Iov wavfiledata = Res_load("bg.wav");
+    hope(wavfiledata.size);
+    g.bg_wav = wavfiledata.data;
+    PcmWav_convert_endianness(g.bg_wav);
     hope(PcmWav_is_valid(g.bg_wav));
     PcmWav_log(g.bg_wav, "Loaded `bg.wav`:");
     PcmWav_play_once(g.bg_wav);
@@ -392,8 +480,6 @@ static void Game_handle_ButtonRelease(Game *g, XButtonEvent *e) {
     */
 }
 static void Game_handle_MotionNotify(Game *g, XMotionEvent *e) {
-    (void)g;
-    (void)e;
     g->current_mouse_position.x = e->x;
     g->current_mouse_position.y = e->y;
     /*
@@ -413,14 +499,27 @@ static void Game_handle_FocusOut(Game *g, XFocusChangeEvent *e) {
     //logi("We lost focus\n");
 }
 static void Game_handle_EnterNotify(Game *g, XCrossingEvent *e) {
-    (void)g;
-    (void)e;
+    g->current_mouse_position.x = e->x;
+    g->current_mouse_position.y = e->y;
     //logi("Mouse is in\n");
 }
 static void Game_handle_LeaveNotify(Game *g, XCrossingEvent *e) {
     (void)g;
     (void)e;
     //logi("Mouse is out\n");
+}
+static void Game_handle_ConfigureNotify(Game *g, XConfigureEvent *e) {
+    (void)g;
+    g->current_window_position.x = e->x;
+    g->current_window_position.y = e->y;
+    g->current_window_size.w = e->width;
+    g->current_window_size.h = e->height;
+    Game_reshape(g);
+    /*
+    logi("Window moved to (%i, %i) and resized to (%i, %i)\n", 
+        e->x, e->y, e->width, e->height
+    );
+    */
 }
 
 void Game_handle_event(Game *g, GameEvent event) {
@@ -457,6 +556,9 @@ void Game_handle_event(Game *g, GameEvent event) {
             logi("Received quit event\n");
             g->should_quit = true;
         }
+        break;
+    case ConfigureNotify:
+        Game_handle_ConfigureNotify(g, (void*)&event);
         break;
     default:
         //logi("Unknown event %#x\n", event.type);

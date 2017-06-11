@@ -13,6 +13,7 @@
 
 typedef struct {
     const char *window_title;
+    bool center_window; // if true, the field below is ignored
     Vec2i window_position;
     Extent2u window_size;
 } GameInitialParams;
@@ -20,6 +21,10 @@ typedef struct {
 typedef struct {
     PlatformGame;
     bool should_quit;
+    Vec2f current_bg_position, current_bg_velocity;
+    Vec2i current_mouse_position;
+    Vec2i current_window_position;
+    Extent2u current_window_size;
     GLuint gl_bg_texture;
     GLuint gl_program;
     GLint gl_loc_texture;
@@ -27,8 +32,6 @@ typedef struct {
     GLint gl_loc_scale;
     GLuint gl_vbo;
     PcmWav *bg_wav;
-    Vec2f current_bg_position, current_bg_velocity;
-    Vec2i current_mouse_position;
 } Game;
 
 typedef PlatformGameEvent GameEvent;

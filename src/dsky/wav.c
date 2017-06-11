@@ -5,6 +5,15 @@
 
 #define TAG "PcmWav"
 
+
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+void PcmWav_convert_endianness(const PcmWav *wav) {
+    (void)wav;
+}
+#else
+#error PcmWav_convert_endianness not yet implemented for big endians!
+#endif
+
 bool PcmWav_is_valid(const PcmWav *wav) {
     if(strncmp(wav->chunk_id, "RIFF", 4))
         return false;
@@ -78,7 +87,7 @@ static void* threadproc(void *arg) {
         printf("Short write (expected %li, wrote %li)\n", (long)wav->data_size, frames);
     return NULL;
 }
-// XXX This creates a thread each time
+// NOTE: This creates a thread each time
 // it's a quick ugly dirty hack, don't ship this
 void PcmWav_play_once(const PcmWav *wav) {
     pthread_t thread;
