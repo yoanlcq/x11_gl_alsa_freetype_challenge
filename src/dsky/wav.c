@@ -27,17 +27,30 @@ bool PcmWav_is_valid(const PcmWav *wav) {
         return false;
     return true;
 }
+
+
+PcmDuration PcmDuration_from(uint64_t frame_count, uint32_t sample_rate) {
+    PcmDuration d = {0};
+    float seconds_total = frame_count / (float)sample_rate;
+    d.hours = seconds_total / 3600;
+    d.minutes = seconds_total / 60 - d.hours*60;
+    d.seconds = seconds_total - d.minutes*60 - d.hours*3600;
+    float milliseconds = 1000.f*(seconds_total - d.seconds*60 - d.minutes*3600 - d.hours*3600*60);
+    if(milliseconds >= 0)
+        d.milliseconds = milliseconds;
+    return d;
+}
+
 void PcmWav_log(const PcmWav *wav, const char *header) {
     uint32_t frame_count = wav->data_size / wav->frame_size;
-    unsigned seconds = frame_count / (float)wav->sample_rate;
-    unsigned minutes = seconds / 60;
-    logi("%s %"PRIu32"-bit %"PRIu32" channels @%"PRIu32"Hz, %"PRIu32" frames (%u:%u)\n", 
+    PcmDuration d = PcmDuration_from(frame_count, wav->sample_rate);
+    logi("%s %"PRIu32"-bit %"PRIu32" channels @%"PRIu32"Hz, %"PRIu32" frames (%u:%u:%u:%u)\n", 
         header, 
         wav->bits_per_sample, 
         wav->channel_count, 
         wav->sample_rate, 
         frame_count,
-        minutes, seconds % 60
+        d.hours, d.minutes, d.seconds, d.milliseconds
     );
 }
 
@@ -59,8 +72,8 @@ static void* threadproc(void *arg) {
     int err;
     snd_pcm_t *handle;
     snd_pcm_sframes_t frames, wav_frame_count;
-    if ((err = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
-        printf("Playback open error: %s\n", snd_strerror(err));
+    if ((err = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0/*SND_PCM_NONBLOCK*/)) < 0) {
+        loge("Playback open error: %s\n", snd_strerror(err));
         exit(EXIT_FAILURE);
     }
     if ((err = snd_pcm_set_params(handle,
@@ -71,7 +84,7 @@ static void* threadproc(void *arg) {
             1,
             500000)) < 0) 
     {   /* 0.5sec */
-        printf("Playback open error: %s\n", snd_strerror(err));
+        loge("Playback open error: %s\n", snd_strerror(err));
         exit(EXIT_FAILURE);
     }
 
@@ -80,11 +93,19 @@ static void* threadproc(void *arg) {
     if (frames < 0)
         frames = snd_pcm_recover(handle, frames, 0);
     if (frames < 0) {
-        printf("snd_pcm_writei failed: %s\n", snd_strerror(frames));
+        loge("snd_pcm_writei failed: %s\n", snd_strerror(frames));
         return NULL;
     }
-    if (frames > 0 && frames < (long)wav_frame_count)
-        printf("Short write (expected %li, wrote %li)\n", (long)wav->data_size, frames);
+    if (frames > 0 && frames < wav_frame_count) {
+        PcmDuration e, w;
+        e = PcmDuration_from(wav_frame_count, wav->sample_rate);
+        w = PcmDuration_from(frames, wav->sample_rate);
+        logw("Short write (expected %li frames (%u:%u:%u:%u), wrote %li frames (%u:%u:%u:%u))\n", 
+            wav_frame_count, e.hours, e.minutes, e.seconds, e.milliseconds,
+            frames, w.hours, w.minutes, w.seconds, w.milliseconds
+        );
+    }
+    logi("Done playing! Thread exited.\n");
     return NULL;
 }
 // NOTE: This creates a thread each time

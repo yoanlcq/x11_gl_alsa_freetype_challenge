@@ -20,7 +20,12 @@ typedef struct {
     uint8_t data[];
 } PcmWav;
 
+typedef struct {
+    uint32_t hours, minutes, seconds, milliseconds;
+} PcmDuration;
+
 bool PcmWav_is_valid(const PcmWav *data);
 void PcmWav_log(const PcmWav *wav, const char *header);
 void PcmWav_play_once(const PcmWav *wav);
 void PcmWav_convert_endianness(const PcmWav *wav);
+PcmDuration PcmDuration_from(uint64_t frame_count, uint32_t sample_rate);
