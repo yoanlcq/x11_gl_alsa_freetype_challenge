@@ -2,7 +2,9 @@
 
 #include <dsky/vec.h>
 
+#ifndef _WIN32
 #define GL_GLEXT_PROTOTYPES
+#endif
 #include <GL/gl.h>
 #include <GL/glext.h>
 

@@ -11,4 +11,4 @@ do { \
         break; \
     loge_("%s:%u:%s: Hoped that `%s` would be true.\n", __FILE__, __LINE__, __func__, #pred); \
     __builtin_trap(); \
-} while(0);
+} while(0)

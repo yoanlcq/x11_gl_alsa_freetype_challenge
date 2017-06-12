@@ -179,16 +179,27 @@ void Game_render_present(Game *g) {
         t.tv_nsec = 16666666;
         nanosleep(&t, &rem);
     }
+    // TODO: Count FPS, for two reasons :
+    // - See how we're doing;
+    // - Detecting skyrocketting FPS.
     glXSwapBuffers(g->x_display, g->glx_window);
 }
 
 static PFNGLXCREATECONTEXTATTRIBSARBPROC glXCreateContextAttribsARB;
 static PFNGLXSWAPINTERVALEXTPROC glXSwapIntervalEXT;
+// NOTE: without the underscore, "redeclared as different kind of symbol ?"
+static PFNGLXSWAPINTERVALMESAPROC _glXSwapIntervalMESA;
+static PFNGLXGETSWAPINTERVALMESAPROC _glXGetSwapIntervalMESA;
+static const char *glx_extensions;
 static bool has_GLX_ARB_create_context = false;
 static bool has_GLX_ARB_create_context_profile = false;
 static bool has_GLX_EXT_swap_control = false;
 static bool has_GLX_EXT_swap_control_tear = false;
-static const char *glx_extensions;
+static bool has_GLX_OML_swap_method = false;
+static bool has_GLX_OML_sync_control = false;
+static bool has_GLX_SGI_swap_control = false;
+static bool has_GLX_SGI_video_sync = false;
+static bool has_GLX_MESA_swap_control = false;
 
 Game Game_init(GameInitialParams p) {
 
@@ -216,6 +227,11 @@ Game Game_init(GameInitialParams p) {
     has_GLX_ARB_create_context_profile = !!strstr(glx_extensions, "GLX_ARB_create_context_profile");
     has_GLX_EXT_swap_control = !!strstr(glx_extensions, "GLX_EXT_swap_control");
     has_GLX_EXT_swap_control_tear = !!strstr(glx_extensions, "GLX_EXT_swap_control_tear");
+    has_GLX_OML_swap_method = !!strstr(glx_extensions, "GLX_OML_swap_method");
+    has_GLX_OML_sync_control = !!strstr(glx_extensions, "GLX_OML_sync_control");
+    has_GLX_SGI_swap_control = !!strstr(glx_extensions, "GLX_SGI_swap_control");
+    has_GLX_SGI_video_sync = !!strstr(glx_extensions, "GLX_SGI_video_sync");
+    has_GLX_MESA_swap_control = !!strstr(glx_extensions, "GLX_MESA_swap_control");
 
     hope(has_GLX_ARB_create_context);
     hope(has_GLX_ARB_create_context_profile); // NOTE: because of laziness
@@ -230,6 +246,17 @@ Game Game_init(GameInitialParams p) {
             (PFNGLXSWAPINTERVALEXTPROC)
             glXGetProcAddressARB((const GLubyte*) "glXSwapIntervalEXT");
         hope(glXSwapIntervalEXT);
+    }
+
+    if(has_GLX_MESA_swap_control) {
+        _glXSwapIntervalMESA =
+            (PFNGLXSWAPINTERVALMESAPROC)
+            glXGetProcAddressARB((const GLubyte*) "glXSwapIntervalMESA");
+        hope(_glXSwapIntervalMESA);
+        _glXGetSwapIntervalMESA =
+            (PFNGLXGETSWAPINTERVALMESAPROC)
+            glXGetProcAddressARB((const GLubyte*) "glXGetSwapIntervalMESA");
+        hope(_glXGetSwapIntervalMESA);
     }
 
     int fbattribs[] = {
@@ -419,6 +446,8 @@ Game Game_init(GameInitialParams p) {
         glXSwapIntervalEXT(g.x_display, g.glx_window, -1);
     else if(has_GLX_EXT_swap_control)
         glXSwapIntervalEXT(g.x_display, g.glx_window, 1);
+    else if(has_GLX_MESA_swap_control)
+        hope(!_glXSwapIntervalMESA(1)); // NOTE: Seems to have no effect. Try to sync with X server ?
     else
         g.is_vsync = false;
 
@@ -540,6 +569,11 @@ GameEvent Game_wait_event(Game *g) {
 
 // NOTE: action is one of the above three
 static void Game_x11_set_fullscreen(Game *g, int action) {
+
+    // TODO: Also call Game_reshape() at that moment, because
+    // by the time our window receives the message back,
+    // we can briefly see the current clear color.
+
     // NOTE: Later, consider bypassing the compositor
     // Also consider setting motif wm hints as an alternative implementation
     
@@ -581,7 +615,7 @@ static void Game_handle_KeyPress(Game *g, XKeyEvent *e) {
     // logi("Pressed: keycode=%i, keysym=%lu\n", e->keycode, keysym);
     // NOTE: /usr/include/X11/keysymdef.h
     //
-    // NOTE: Yes, this does support simltaneaous key presses :
+    // NOTE: Yes, this does support simltaneous key presses :
     // See how xev reacts to it.
     bool is_repeat = false;
     if(g->x11_previous_key_release_event.time == e->time
