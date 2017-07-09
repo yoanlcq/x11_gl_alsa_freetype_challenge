@@ -1,6 +1,9 @@
 # x11_gl_alsa_freetype_challenge
 Making a game for Linux with the system-provided APIs, in two days.
 
+**NOTE**: For reasons against my will, Day 2 was actually split into small periods of time the few following days. After that, I completely forgot to update the README, and today I've forgotten too many details to complete this seriously.  
+The remainder of the README was written by the "Day-2" me who knew a lot more at the time.  
+
 # The challenge
 
 Make a game for Linux with no "external" run-time dependencies such as
@@ -61,4 +64,4 @@ but obviously I'd care if it was something I would ship.
 You should be fine _running_ the executable (if I distribute one)
 out-of-the-box on amd64, however for compiling you'll need (provided I haven't left out anything):
 
-- Ubuntu: `sudo apt install -y libx11-dev libasound2-dev libfreetype6-dev libglapi-mesa libgl1-mesa-glx libgl1-mesa-dri libgl1-mesa-dev mesa-common-dev`
+- Ubuntu: `sudo apt install -y libx11-dev libasound2-dev libfreetype6-dev libgl1-mesa-dev

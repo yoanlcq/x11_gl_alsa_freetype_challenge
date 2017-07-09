@@ -466,7 +466,7 @@ Game Game_init(GameInitialParams p) {
     logi("GLSL version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
     Iov rgba_iov = Res_load("bg_1024x1024_rgba.data");
-    hope(rgba_iov.size);
+    hope(rgba_iov.size && "Failed to load `bg_1024x1024_rgba.data`!");
     Rgba32 *data = rgba_iov.data;
     Extent2u extent = { .w=1024, .h=1024 };
     g.gl_bg_texture = GLTexture_from_power_of_two_rgba32(data, extent);
@@ -520,7 +520,7 @@ Game Game_init(GameInitialParams p) {
     glBufferSubData(GL_ARRAY_BUFFER, sizeof vpositions, sizeof vtexcoords, vtexcoords);
 
     Iov wavfiledata = Res_load("bg.wav");
-    hope(wavfiledata.size);
+    hope(wavfiledata.size && "Could not load `bg.wav`!");
     g.bg_wav = wavfiledata.data;
     PcmWav_convert_endianness(g.bg_wav);
     hope(PcmWav_is_valid(g.bg_wav));
