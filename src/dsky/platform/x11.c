@@ -80,7 +80,7 @@ void Game_frame_update(Game *g) {
     // printf("sizw: %u\n", g->current_window_size.w);
     g->view.velocity.x = world.x*factor.x;
     g->view.velocity.y = world.y*factor.y;
-    const Vec2f max_vel = { .x=0.01f, .y=0.01f };
+    const Vec2f max_vel = { .x=0.001f, .y=0.001f };
     if(fabsf(g->view.velocity.x) <= max_vel.x)
         g->view.velocity.x = 0;
     if(fabsf(g->view.velocity.y) <= max_vel.y)
@@ -92,12 +92,17 @@ void Game_frame_update(Game *g) {
     const float view_aspect_ratio = 
         g->current_window_size.w / (float) g->current_window_size.h;
     const float aspect_ratio = BG_W / (float) BG_H;
+	// x_bound is not correct, but I gave up trying to fix it.
     float x_bound = -1 + aspect_ratio/view_aspect_ratio;
-    x_bound *= g->view.zoom;
     float y_bound = g->view.zoom - 1;
     g->view.position.x = clampf(g->view.position.x, -x_bound, x_bound);
     g->view.position.y = clampf(g->view.position.y, -y_bound, y_bound);
-    //printf("posx: %f\n", g->view.position.x);
+	/*
+    printf("posx      : %f\n", g->view.position.x);
+    printf("zoom      : %f\n", g->view.zoom);
+    printf("view_ratio: %f\n", view_aspect_ratio);
+    printf("bg_ratio  : %f\n", aspect_ratio);
+	*/
 }
 void Game_render_clear(Game *g) {
     (void)g;
@@ -105,15 +110,18 @@ void Game_render_clear(Game *g) {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
+/*
 #include <math.h>
 static float shake(float t, float freq, float amp) {
     return amp * sinf(t * freq * 2 * M_PI);
 }
+*/
 
 
 // https://gist.github.com/diabloneo/9619917
 // Didn't feel like implementing this myself, it should be a standard
 // function anyway.
+/*
 static void timespec_diff(struct timespec *start, struct timespec *stop,
         struct timespec *result)
 {
@@ -125,19 +133,22 @@ static void timespec_diff(struct timespec *start, struct timespec *stop,
         result->tv_nsec = stop->tv_nsec - start->tv_nsec;
     }
 }
+*/
 
+/*
 static void timespec_print(const char *header, struct timespec t) {
     logi("%s %lli sec, %llu nanosecs\n", header, (long long)t.tv_sec, (unsigned long long)t.tv_nsec);
 }
+*/
 
 void Game_render_scene(Game *g) {
 
-    struct timespec current_time, diff_time;
+    struct timespec current_time/*, diff_time*/;
     clock_gettime(CLOCK_MONOTONIC, &current_time);
 
-    timespec_diff(&g->start_time, &current_time, &diff_time);
-    float t = diff_time.tv_sec + diff_time.tv_nsec * 10e-10f;
-    float shake_x = shake(t, 2.f, 0.02f);
+    // timespec_diff(&g->start_time, &current_time, &diff_time);
+    // float t = diff_time.tv_sec + diff_time.tv_nsec * 10e-10f;
+    // float shake_x = shake(t, 2.f, 0.02f);
     // printf("t = %f\n", t);
     // timespec_print("s", g->start_time);
     // timespec_print("c", current_time);
@@ -174,7 +185,8 @@ void Game_render_scene(Game *g) {
 }
 void Game_render_present(Game *g) {
     // PERF: should avoid this branch when we know ?
-    if(!g->is_vsync) {
+	// XXX Always take this branch because Vsync does not actually block the thread
+    if(true || !g->is_vsync) {
         struct timespec t = {0}, rem;
         t.tv_nsec = 16666666;
         nanosleep(&t, &rem);
@@ -442,16 +454,21 @@ Game Game_init(GameInitialParams p) {
     hope(glXMakeContextCurrent(g.x_display, g.glx_window, g.glx_window, g.glx_context));
 
     g.is_vsync = true;
-    if(has_GLX_EXT_swap_control_tear)
+    if(has_GLX_EXT_swap_control_tear) {
+    	puts("Enabled late-swap tearing with glxSwapIntervalEXT()");
         glXSwapIntervalEXT(g.x_display, g.glx_window, -1);
-    else if(has_GLX_EXT_swap_control)
+	} else if(has_GLX_EXT_swap_control) {
+    	puts("Enabled Vsync with glxSwapIntervalEXT()");
         glXSwapIntervalEXT(g.x_display, g.glx_window, 1);
-    else if(has_GLX_MESA_swap_control)
+	} else if(has_GLX_MESA_swap_control) {
+    	puts("Enabled Vsync with glxSwapIntervalMESA()");
         hope(!_glXSwapIntervalMESA(1)); // NOTE: Seems to have no effect. Try to sync with X server ?
-    else
+	}
+    else {
+    	puts("Disabled Vsync. Limiting FPS manually.");
         g.is_vsync = false;
+	}
 
-    printf("Is Vsync (maybe): %s\n", g.is_vsync ? "Yes" : "No");
     // NOTE: We should read back the swap interval
     // to ensure the display has Vsync. On my laptop, for some
     // reason, it doesn't.
@@ -519,12 +536,12 @@ Game Game_init(GameInitialParams p) {
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof vpositions, vpositions);
     glBufferSubData(GL_ARRAY_BUFFER, sizeof vpositions, sizeof vtexcoords, vtexcoords);
 
-    Iov wavfiledata = Res_load("bg.wav");
-    hope(wavfiledata.size && "Could not load `bg.wav`!");
+    Iov wavfiledata = Res_load("bg_44100hz_16bit.wav");
+    hope(wavfiledata.size && "Could not load `bg_44100hz_16bit.wav`!");
     g.bg_wav = wavfiledata.data;
     PcmWav_convert_endianness(g.bg_wav);
     hope(PcmWav_is_valid(g.bg_wav));
-    PcmWav_log(g.bg_wav, "Loaded `bg.wav`:");
+    PcmWav_log(g.bg_wav, "Loaded `bg_44100hz_16bit.wav`:");
     PcmWav_play_once(g.bg_wav);
 
     clock_gettime(CLOCK_MONOTONIC, &g.start_time);

@@ -91,10 +91,10 @@ static void* threadproc(void *arg) {
 
     wav_frame_count = wav->data_size / wav->frame_size;
     const snd_pcm_sframes_t framechunk = /*4096<<2*/ wav_frame_count;
-    int16_t *cur = wav->data;
+    int16_t *cur = (void*) wav->data;
     float factor = 1;
     for(;;) {
-        if(cur + framechunk > wav->data + wav->data_size)
+        if((void*)(cur + (framechunk*wav->channel_count)) > (void*)(wav->data + wav->data_size))
             break;
         for(int i=0 ; i<framechunk ; ++i) {
             cur[i*2+0] *= factor;
