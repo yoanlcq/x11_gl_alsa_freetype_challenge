@@ -4,6 +4,8 @@ Making a game for Linux with the system-provided APIs, in two days.
 **NOTE**: For reasons against my will, Day 2 was actually split into small periods of time the few following days. After that, I completely forgot to update the README, and today I've forgotten too many details to complete this seriously.  
 The remainder of the README was written by the "Day-2" me who knew a lot more at the time.  
 
+The answer to "is it something you would ship?" is, of course, still a huge NO. It was more like practice.
+
 # The challenge
 
 Make a game for Linux with no "external" run-time dependencies such as
