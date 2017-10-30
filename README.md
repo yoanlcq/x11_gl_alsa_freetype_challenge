@@ -1,6 +1,8 @@
 # x11_gl_alsa_freetype_challenge
 Making a game for Linux with the system-provided APIs, in two days.
 
+![Screenshot](https://yoanlecoq.com/dl/dev/dsky/dsky.png)
+
 # The challenge
 
 Make a game for Linux with no "external" run-time dependencies such as
