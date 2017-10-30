@@ -1,11 +1,6 @@
 # x11_gl_alsa_freetype_challenge
 Making a game for Linux with the system-provided APIs, in two days.
 
-**NOTE**: For reasons against my will, Day 2 was actually split into small periods of time the few following days. After that, I completely forgot to update the README, and today I've forgotten too many details to complete this seriously.  
-The remainder of the README was written by the "Day-2" me who knew a lot more at the time.  
-
-The answer to "is it something you would ship?" is, of course, still a huge NO. It was more like practice.
-
 # The challenge
 
 Make a game for Linux with no "external" run-time dependencies such as
@@ -61,6 +56,9 @@ Extra features I'd like to add:
 
 The game avoids matrices like the plague because I'm too lazy to implement them,
 but obviously I'd care if it was something I would ship.
+
+# Day 2
+For reasons, Day 2 was actually split into small periods of time the few following days. These were mostly improvements over Day 1, and I've lost track of these. I'll let the commits speak for themselves I guess ???
 
 # Dependencies
 You should be fine _running_ the executable (if I distribute one)
